@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, text
 
 app = FastAPI()
 
-DATABASE_URL = "mysql+pymysql://root:rootpassword@db/test_db"
+DATABASE_URL = "mysql+pymysql://user:password@localhost:3306/test_db"
 engine = create_engine(DATABASE_URL)
 
 BINANCE_API_URL = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
@@ -45,47 +45,47 @@ def get_best_exchange(amount: float):
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/top-spenders")
-def get_top_spenders():
-    with engine.connect() as connection:
-        result = connection.execute(text("""
-            SELECT user_id, SUM(usd_amount) AS total_spent
-            FROM transactions
-            GROUP BY user_id
-            ORDER BY total_spent DESC
-            LIMIT 3;
-        """))
-        return [dict(row) for row in result]
+# @app.get("/top-spenders")
+# def get_top_spenders():
+#     with engine.connect() as connection:
+#         result = connection.execute(text("""
+#             SELECT user_id, SUM(usd_amount) AS total_spent
+#             FROM transactions
+#             GROUP BY user_id
+#             ORDER BY total_spent DESC
+#             LIMIT 3;
+#         """))
+#         return [dict(row) for row in result]
 
-@app.get("/spenders-range")
-def get_spenders_range():
-    with engine.connect() as connection:
-        result = connection.execute(text("""
-            SELECT COUNT(*)
-            FROM (
-                SELECT user_id, SUM(usd_amount) AS total_spent
-                FROM transactions
-                GROUP BY user_id
-                HAVING total_spent > 1000 AND total_spent < 2000
-            ) AS subquery;
-        """))
-        return {"count": result.scalar()}
+# @app.get("/spenders-range")
+# def get_spenders_range():
+#     with engine.connect() as connection:
+#         result = connection.execute(text("""
+#             SELECT COUNT(*)
+#             FROM (
+#                 SELECT user_id, SUM(usd_amount) AS total_spent
+#                 FROM transactions
+#                 GROUP BY user_id
+#                 HAVING total_spent > 1000 AND total_spent < 2000
+#             ) AS subquery;
+#         """))
+#         return {"count": result.scalar()}
 
-@app.get("/countries-low-spending")
-def get_countries_low_spending():
-    with engine.connect() as connection:
-        result = connection.execute(text("""
-            SELECT country
-            FROM users
-            JOIN (
-                SELECT user_id, AVG(usd_amount) AS avg_spent
-                FROM transactions
-                GROUP BY user_id
-            ) AS user_spending ON users.id = user_spending.user_id
-            GROUP BY country
-            HAVING AVG(user_spending.avg_spent) < 500;
-        """))
-        return [dict(row) for row in result]
+# @app.get("/countries-low-spending")
+# def get_countries_low_spending():
+#     with engine.connect() as connection:
+#         result = connection.execute(text("""
+#             SELECT country
+#             FROM users
+#             JOIN (
+#                 SELECT user_id, AVG(usd_amount) AS avg_spent
+#                 FROM transactions
+#                 GROUP BY user_id
+#             ) AS user_spending ON users.id = user_spending.user_id
+#             GROUP BY country
+#             HAVING AVG(user_spending.avg_spent) < 500;
+#         """))
+#         return [dict(row) for row in result]
 
 if __name__ == "__main__":
     import uvicorn
