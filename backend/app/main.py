@@ -1,14 +1,21 @@
 from fastapi import FastAPI, HTTPException
 import requests
+import httpx
+import ssl
 from sqlalchemy import create_engine, text
+import certifi
+# print(certifi.where())
 
 app = FastAPI()
-
+ssl_context = ssl.create_default_context(cafile=certifi.where())
 DATABASE_URL = "mysql+pymysql://user:password@localhost:3306/test_db"
 engine = create_engine(DATABASE_URL)
 
 BINANCE_API_URL = "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
 COINBASE_API_URL = "https://api.coinbase.com/v2/prices/spot?currency=USD"
+POLYGON_API_URL = "https://api.polygon.io/v3/reference/exchanges?asset_class=stocks&apiKey=igaUIziqROMRbYfNPTNSea0Xf2iXERPY"
+
+BASE_URL = "https://api.coinbase.com/v2"
 
 @app.get("/exchange-routing")
 def get_best_exchange(amount: float):
@@ -45,48 +52,71 @@ def get_best_exchange(amount: float):
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# @app.get("/top-spenders")
-# def get_top_spenders():
-#     with engine.connect() as connection:
-#         result = connection.execute(text("""
-#             SELECT user_id, SUM(usd_amount) AS total_spent
-#             FROM transactions
-#             GROUP BY user_id
-#             ORDER BY total_spent DESC
-#             LIMIT 3;
-#         """))
-#         return [dict(row) for row in result]
+@app.get("/currencies")
+async def get_currencies():
+    # async with httpx.AsyncClient(verify=certifi.where()) as client:
+    async with httpx.AsyncClient(verify=False) as client:
+        try:
+            response = await client.get(f"{BASE_URL}/currencies")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail="Error fetching currencies")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
-# @app.get("/spenders-range")
-# def get_spenders_range():
-#     with engine.connect() as connection:
-#         result = connection.execute(text("""
-#             SELECT COUNT(*)
-#             FROM (
-#                 SELECT user_id, SUM(usd_amount) AS total_spent
-#                 FROM transactions
-#                 GROUP BY user_id
-#                 HAVING total_spent > 1000 AND total_spent < 2000
-#             ) AS subquery;
-#         """))
-#         return {"count": result.scalar()}
+@app.get("/exchange-rates")
+async def get_exchange_rates(currency: str):
+    # async with httpx.AsyncClient(verify=certifi.where()) as client:
+    async with httpx.AsyncClient(verify=False) as client:
+        try:
+            response = await client.get(f"{BASE_URL}/exchange-rates?currency={currency}")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail="Error fetching currencies")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
-# @app.get("/countries-low-spending")
-# def get_countries_low_spending():
-#     with engine.connect() as connection:
-#         result = connection.execute(text("""
-#             SELECT country
-#             FROM users
-#             JOIN (
-#                 SELECT user_id, AVG(usd_amount) AS avg_spent
-#                 FROM transactions
-#                 GROUP BY user_id
-#             ) AS user_spending ON users.id = user_spending.user_id
-#             GROUP BY country
-#             HAVING AVG(user_spending.avg_spent) < 500;
-#         """))
-#         return [dict(row) for row in result]
+@app.get("/best-price")
+async def get_best_price(amount: float):
+    prices = {}
 
+    async with httpx.AsyncClient(verify=False) as client:
+        try:
+            # Fetch price from Binance
+            binance_response = await client.get(BINANCE_API_URL)
+            binance_response.raise_for_status()
+            prices['Binance'] = float(binance_response.json()['price'])
+
+            # Fetch price from Coinbase
+            coinbase_response = await client.get(COINBASE_API_URL)
+            coinbase_response.raise_for_status()
+            prices['Coinbase'] = float(coinbase_response.json()['data']['amount'])
+
+            # Fetch price from Polygon
+            polygon_response = await client.get(POLYGON_API_URL)
+            polygon_response.raise_for_status()
+            polygon_data = polygon_response.json()
+            if 'results' in polygon_data and isinstance(polygon_data['results'], list) and len(polygon_data['results']) > 0:
+                prices['Polygon'] = float(polygon_data['results'][0].get('c', 0))  # ใช้ .get() เพื่อหลีกเลี่ยง KeyError
+            else:
+                raise HTTPException(status_code=500, detail="No results found from Polygon")
+
+            # Compare prices
+            best_exchange = min(prices, key=prices.get)
+            best_price = prices[best_exchange] * amount
+
+            return {
+                "amount": amount,
+                "best_exchange": best_exchange,
+                "best_price": best_price
+            }
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=e.response.status_code, detail="Error fetching prices")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
