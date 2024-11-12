@@ -5,3 +5,6 @@ pymysql
 sqlalchemy
 certifi
 httpx
+passlib[bcrypt]
+pyjwt
+python-dotenv
