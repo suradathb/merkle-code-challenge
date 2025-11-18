@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException, APIRouter
+from fastapi.encoders import jsonable_encoder
 from typing import List
 import requests
 from app.models.data_exchang import DataExchange
+from app.config.database import mongodb
 
 router = APIRouter(
     prefix='/crypto/api',
@@ -48,3 +50,14 @@ def fetch_data_from_external_system():
         raise HTTPException(status_code=response.status_code, detail="Failed to fetch data")
     
     return response.json()
+
+@router.get("/items")
+async def get_items():
+    items = await mongodb.db["items_collection"].find().to_list(length=100)
+    
+    # แปลง ObjectId ในแต่ละ item ให้เป็น string
+    for item in items:
+        item["_id"] = str(item["_id"])
+
+    return jsonable_encoder(items)
+

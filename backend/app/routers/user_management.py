@@ -1,10 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException, APIRouter
+from fastapi.encoders import jsonable_encoder
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from passlib.context import CryptContext
-import jwt
+from app.config.database import mongodb
 from datetime import datetime, timedelta
 from app.models.data_users import User,UserInDB
+import jwt
 import os
 from dotenv import load_dotenv
 
@@ -113,4 +115,14 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 @router.get("/users/me", response_model=User)
 def read_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.get("/users")
+async def get_users():
+    users = await mongodb.db["user_collection"].find().to_list(length=100)
+    
+    # แปลง ObjectId ในแต่ละ item ให้เป็น string
+    for user in users:
+        user["_id"] = str(user["_id"])
+
+    return jsonable_encoder(users)
 
